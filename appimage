@@ -4,7 +4,7 @@
 set -euo pipefail
 
 # Version
-VERSION="1.3.0"
+VERSION="1.3.2"
 
 # Color definitions
 setup_colors() {
@@ -226,23 +226,46 @@ EOF
 
 # Function to list installed applications
 list_applications() {
+    local found=false
+    
     printf "\n%s\n" "${BLUE}Installed AppImage Applications:${RESET}"
-    printf "%s\n" "${YELLOW}Location: ${ROOT_APPS_DIR}${RESET}"
     printf "%s\n" "----------------------------------------"
 
-    # Check .desktop files for installed applications
-    if [[ -d "${ROOT_DESKTOP_DIR}" ]]; then
+    # Function to extract app info from desktop file
+    parse_desktop_file() {
+        local desktop_file=$1
+        local name exec icon
+        
+        name=$(grep "^Name=" "$desktop_file" | cut -d'=' -f2-)
+        exec=$(grep "^Exec=" "$desktop_file" | cut -d'=' -f2-)
+        icon=$(grep "^Icon=" "$desktop_file" | cut -d'=' -f2-)
+        
+        # Check if it's an AppImage (either in /opt or ends with .AppImage)
+        if [[ "$exec" == *".AppImage"* ]] || [[ "$exec" == "/opt/"* ]]; then
+            printf "📦 %-30s [%s]\n" "$name" "$(basename "$exec")"
+            found=true
+        fi
+    }
+
+    # Check system-wide desktop entries
+    if [[ -d "/usr/share/applications" ]]; then
         while IFS= read -r -d '' desktop_file; do
-            if grep -q "Exec=.*AppImage\|Exec=${ROOT_APPS_DIR}" "$desktop_file"; then
-                local app_name
-                app_name=$(basename "$desktop_file" .desktop)
-                if [[ -f "${ROOT_APPS_DIR}/${app_name}" ]]; then
-                    printf " %s\n" "$app_name"
-                fi
-            fi
-        done < <(find "${ROOT_DESKTOP_DIR}" -name "*.desktop" -print0)
+            parse_desktop_file "$desktop_file"
+        done < <(find "/usr/share/applications" -name "*.desktop" -print0)
     fi
 
+    # Check user desktop entries
+    if [[ -d "${HOME}/.local/share/applications" ]]; then
+        while IFS= read -r -d '' desktop_file; do
+            parse_desktop_file "$desktop_file"
+        done < <(find "${HOME}/.local/share/applications" -name "*.desktop" -print0)
+    fi
+
+    if [[ "$found" == "false" ]]; then
+        printf "No AppImage applications installed\n"
+    fi
+
+    printf "\n%s\n" "${YELLOW}Note: Applications are installed in /opt${RESET}"
     printf "\n"
 }
 
