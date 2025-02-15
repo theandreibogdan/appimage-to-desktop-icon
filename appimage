@@ -41,7 +41,7 @@ ROOT_DESKTOP_DIR="/usr/share/applications"
 # Function to display usage information
 show_help() {
     printf "\n"
-    printf "%s\n" "${BLUE}AppImage to Desktop Icon${RESET} - Version ${VERSION}"
+    printf "%s\n" "AppImage to Desktop Icon - Version ${VERSION}"
     printf "\n"
     printf "%s\n" "${YELLOW}Usage:${RESET}"
     printf "    appimage [OPTIONS] <path_to_appimage> <path_to_icon>\n"
