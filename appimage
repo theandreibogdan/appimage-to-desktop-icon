@@ -4,7 +4,7 @@
 set -euo pipefail
 
 # Version
-VERSION="1.2.3"
+VERSION="1.3.0"
 
 # Color definitions
 setup_colors() {
@@ -223,12 +223,23 @@ EOF
 
     # Create user desktop entry
     local user_desktop_dir="${HOME}/.local/share/applications"
-    cp "$system_desktop_file" "$user_desktop_dir/"
-    chown "$SUDO_USER:$(id -g "$SUDO_USER")" "$user_desktop_dir/${app_name}.desktop"
+    local user_desktop_file="${user_desktop_dir}/${app_name}.desktop"
+    
+    # Create the user desktop entry with the same content
+    cp "$system_desktop_file" "$user_desktop_file"
+    
+    # Set correct ownership for user desktop entry
+    if [ -n "${SUDO_USER:-}" ]; then
+        chown "$SUDO_USER:$(id -g "$SUDO_USER")" "$user_desktop_file"
+    fi
 
     # Update desktop database for both locations
     update-desktop-database "/usr/share/applications" &>/dev/null || true
-    update-desktop-database "$user_desktop_dir" &>/dev/null || true
+    if [ -n "${SUDO_USER:-}" ]; then
+        sudo -u "$SUDO_USER" update-desktop-database "${user_desktop_dir}" &>/dev/null || true
+    else
+        update-desktop-database "${user_desktop_dir}" &>/dev/null || true
+    fi
 
     # Refresh desktop environment
     refresh_desktop_environment
@@ -397,16 +408,6 @@ refresh_desktop_environment() {
 
 # Main script logic
 main() {
-    # Always require root permissions at the start
-    if [[ $EUID -ne 0 ]]; then
-        log "info" "Root privileges required. Requesting sudo access..."
-        if ! command -v sudo >/dev/null 2>&1; then
-            log "error" "sudo is not installed. Please install sudo or run this command as root."
-            exit 1
-        fi
-        exec sudo "$0" "$@"
-    fi
-
     # Check if no arguments provided
     if [[ $# -eq 0 ]]; then
         log "error" "No arguments provided."
@@ -435,6 +436,11 @@ main() {
                 log "info" "Use 'appimage list' to see all installed applications."
                 exit 1
             fi
+            # Require sudo for remove
+            if [[ $EUID -ne 0 ]]; then
+                log "info" "Root privileges required. Requesting sudo access..."
+                exec sudo "$0" "$@"
+            fi
             uninstall_app "$2"
             exit 0
             ;;
@@ -443,6 +449,11 @@ main() {
                 log "error" "The uninstall command doesn't take any additional arguments."
                 printf "\n%s\n" "${YELLOW}Usage:${RESET} appimage uninstall"
                 exit 1
+            fi
+            # Require sudo for uninstall
+            if [[ $EUID -ne 0 ]]; then
+                log "info" "Root privileges required. Requesting sudo access..."
+                exec sudo "$0" "$@"
             fi
             remove_tool
             exit 0
@@ -453,6 +464,11 @@ main() {
                 log "error" "Unknown option: $1"
                 show_help
                 exit 1
+            fi
+            # Require sudo for installation
+            if [[ $EUID -ne 0 ]]; then
+                log "info" "Root privileges required. Requesting sudo access..."
+                exec sudo "$0" "$@"
             fi
             ;;
     esac
