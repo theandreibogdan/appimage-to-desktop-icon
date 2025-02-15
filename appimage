@@ -4,7 +4,7 @@
 set -euo pipefail
 
 # Version
-VERSION="1.2.0"
+VERSION="1.2.2"
 
 # Color definitions
 setup_colors() {
@@ -120,16 +120,30 @@ create_directories() {
         apps_dir="${ROOT_APPS_DIR}"
         icons_dir="${ROOT_ICONS_DIR}"
         desktop_dir="${ROOT_DESKTOP_DIR}"
+        
+        # Ensure root ownership and proper permissions
+        mkdir -p "${apps_dir}"
+        mkdir -p "${icons_dir}/scalable/apps"
+        mkdir -p "${icons_dir}/128x128/apps"
+        mkdir -p "${desktop_dir}"
+        
+        chown root:root "${apps_dir}"
+        chown -R root:root "${icons_dir}"
+        chown root:root "${desktop_dir}"
+        
+        chmod 755 "${apps_dir}"
+        chmod -R 755 "${icons_dir}"
+        chmod 755 "${desktop_dir}"
     else
         apps_dir="${USER_APPS_DIR}"
         icons_dir="${USER_ICONS_DIR}"
         desktop_dir="${USER_DESKTOP_DIR}"
+        
+        mkdir -p "${apps_dir}"
+        mkdir -p "${icons_dir}/scalable/apps"
+        mkdir -p "${icons_dir}/128x128/apps"
+        mkdir -p "${desktop_dir}"
     fi
-
-    mkdir -p "${apps_dir}"
-    mkdir -p "${icons_dir}/scalable/apps"
-    mkdir -p "${icons_dir}/128x128/apps"
-    mkdir -p "${desktop_dir}"
 }
 
 # Function to get icon size and format
@@ -421,6 +435,18 @@ refresh_desktop_environment() {
     esac
 }
 
+# Add this function near the top of the file, after the color definitions
+check_and_elevate_privileges() {
+    if [[ $EUID -ne 0 ]]; then
+        log "info" "Root privileges required. Requesting sudo access..."
+        if ! command -v sudo >/dev/null 2>&1; then
+            log "error" "sudo is not installed. Please install sudo or run this command as root."
+            exit 1
+        fi
+        exec sudo "$0" "$@"
+    fi
+}
+
 # Main script logic
 main() {
     local is_root=false
@@ -444,7 +470,7 @@ main() {
             ;;
         --root)
             is_root=true
-            check_root
+            check_and_elevate_privileges "$@"
             shift
             if [[ $# -eq 0 ]]; then
                 log "error" "No arguments provided after --root"
@@ -463,6 +489,9 @@ main() {
                 log "info" "Use 'appimage list' to see all installed applications."
                 exit 1
             fi
+            if [[ "$is_root" == "true" ]]; then
+                check_and_elevate_privileges "$@"
+            fi
             uninstall_app "$2" "$is_root"
             exit 0
             ;;
@@ -471,6 +500,9 @@ main() {
                 log "error" "The uninstall command doesn't take any additional arguments."
                 printf "\n%s\n" "${YELLOW}Usage:${RESET} appimage uninstall"
                 exit 1
+            fi
+            if [[ "$is_root" == "true" ]]; then
+                check_and_elevate_privileges "$@"
             fi
             remove_tool
             exit 0
