@@ -30,12 +30,12 @@ setup_colors() {
 setup_colors
 
 # Base directories following XDG specification
-USER_APPS_DIR="${HOME}/.local/bin"
-USER_ICONS_DIR="${HOME}/.local/share/icons/hicolor"
-USER_DESKTOP_DIR="${HOME}/.local/share/applications"
+USER_APPS_DIR="/opt"
+USER_ICONS_DIR="/opt"
+USER_DESKTOP_DIR="/usr/share/applications"
 
-ROOT_APPS_DIR="/usr/local/bin"
-ROOT_ICONS_DIR="/usr/share/icons/hicolor"
+ROOT_APPS_DIR="/opt"
+ROOT_ICONS_DIR="/opt"
 ROOT_DESKTOP_DIR="/usr/share/applications"
 
 # Function to display usage information
@@ -113,37 +113,18 @@ validate_file() {
 
 # Function to create necessary directories
 create_directories() {
-    local is_root=$1
-    local apps_dir icons_dir desktop_dir
-
-    if [[ "$is_root" == "true" ]]; then
-        apps_dir="${ROOT_APPS_DIR}"
-        icons_dir="${ROOT_ICONS_DIR}"
-        desktop_dir="${ROOT_DESKTOP_DIR}"
-        
-        # Ensure root ownership and proper permissions
-        mkdir -p "${apps_dir}"
-        mkdir -p "${icons_dir}/scalable/apps"
-        mkdir -p "${icons_dir}/128x128/apps"
-        mkdir -p "${desktop_dir}"
-        
-        chown root:root "${apps_dir}"
-        chown -R root:root "${icons_dir}"
-        chown root:root "${desktop_dir}"
-        
-        chmod 755 "${apps_dir}"
-        chmod -R 755 "${icons_dir}"
-        chmod 755 "${desktop_dir}"
-    else
-        apps_dir="${USER_APPS_DIR}"
-        icons_dir="${USER_ICONS_DIR}"
-        desktop_dir="${USER_DESKTOP_DIR}"
-        
-        mkdir -p "${apps_dir}"
-        mkdir -p "${icons_dir}/scalable/apps"
-        mkdir -p "${icons_dir}/128x128/apps"
-        mkdir -p "${desktop_dir}"
-    fi
+    mkdir -p "${ROOT_APPS_DIR}"
+    mkdir -p "${ROOT_ICONS_DIR}/scalable/apps"
+    mkdir -p "${ROOT_ICONS_DIR}/128x128/apps"
+    mkdir -p "${ROOT_DESKTOP_DIR}"
+    
+    chown root:root "${ROOT_APPS_DIR}"
+    chown -R root:root "${ROOT_ICONS_DIR}"
+    chown root:root "${ROOT_DESKTOP_DIR}"
+    
+    chmod 755 "${ROOT_APPS_DIR}"
+    chmod -R 755 "${ROOT_ICONS_DIR}"
+    chmod 755 "${ROOT_DESKTOP_DIR}"
 }
 
 # Function to get icon size and format
@@ -166,15 +147,23 @@ get_icon_info() {
 # Function to install the AppImage
 install_appimage() {
     local appimage_path=$1
-    local is_root=$2
-    local app_name apps_dir target_path
+    local app_name
     
-    app_name=$(basename "$appimage_path" .AppImage)
-    apps_dir=$(if [[ "$is_root" == "true" ]]; then echo "${ROOT_APPS_DIR}"; else echo "${USER_APPS_DIR}"; fi)
-    target_path="${apps_dir}/${app_name}"
+    # Remove .AppImage extension if present, but handle cases where it might not be
+    app_name=$(basename "$appimage_path" | sed 's/\.AppImage$//i')
+    local target_path="/opt/${app_name}.AppImage"  # Consistent .AppImage extension
     
-    cp "$appimage_path" "$target_path"
-    chmod +x "$target_path"
+    # Always require root permissions
+    if [[ $EUID -ne 0 ]]; then
+        exec sudo "$0" "$@"
+    fi
+    
+    # Ensure target directory exists and has correct permissions
+    mkdir -p "/opt"
+    
+    # Copy with preserved permissions
+    cp -p "$appimage_path" "$target_path"
+    chmod 755 "$target_path"  # Ensure executable permission
     echo "$target_path"
 }
 
@@ -182,29 +171,28 @@ install_appimage() {
 install_icon() {
     local icon_path=$1
     local app_name=$2
-    local is_root=$3
-    local icon_size icons_dir
-    
-    icon_size=$(get_icon_info "$icon_path")
-    icons_dir=$(if [[ "$is_root" == "true" ]]; then echo "${ROOT_ICONS_DIR}"; else echo "${USER_ICONS_DIR}"; fi)
-    
     local icon_ext="${icon_path##*.}"
-    local target_path="${icons_dir}/${icon_size}/apps/${app_name}.${icon_ext}"
+    local target_path="/opt/${app_name}.${icon_ext}"
+    
+    # Always require root permissions
+    if [[ $EUID -ne 0 ]]; then
+        exec sudo "$0" "$@"
+    fi
     
     cp "$icon_path" "$target_path"
-    echo "$app_name.${icon_ext}"
+    echo "$target_path"
 }
 
 # Function to create desktop entry
 create_desktop_entry() {
     local app_path=$1
-    local icon_name=$2
-    local is_root=$3
-    local app_name desktop_dir desktop_file
+    local icon_path=$2
+    local app_name
     
     app_name=$(basename "$app_path" .AppImage)
-    desktop_dir=$(if [[ "$is_root" == "true" ]]; then echo "${ROOT_DESKTOP_DIR}"; else echo "${USER_DESKTOP_DIR}"; fi)
-    desktop_file="${desktop_dir}/${app_name}.desktop"
+    
+    # Create system-wide desktop entry
+    local system_desktop_file="/usr/share/applications/${app_name}.desktop"
     
     # Get application name from AppImage if possible
     local display_name
@@ -214,35 +202,33 @@ create_desktop_entry() {
         display_name="$app_name"
     fi
     
-    cat > "$desktop_file" << EOF
+    # Ensure parent directories exist
+    mkdir -p "/usr/share/applications"
+    mkdir -p "${HOME}/.local/share/applications"
+    
+    # Create the desktop entry content
+    cat > "$system_desktop_file" << EOF
 [Desktop Entry]
 Name=${display_name}
 Exec=${app_path}
-Icon=${icon_name}
+Icon=${icon_path}
 Type=Application
-Categories=Application;
+Categories=Development;
 Terminal=false
 StartupNotify=true
+Version=1.0
 EOF
 
-    chmod +x "$desktop_file"
+    chmod 644 "$system_desktop_file"  # Correct permissions for .desktop files
 
-    # Update desktop database
-    if [[ "$is_root" == "true" ]]; then
-        update-desktop-database "${ROOT_DESKTOP_DIR}" &>/dev/null || true
-        for theme_dir in "${ROOT_ICONS_DIR}"/*; do
-            if [ -d "$theme_dir" ]; then
-                gtk-update-icon-cache -f -t "$theme_dir" &>/dev/null || true
-            fi
-        done
-    else
-        update-desktop-database "${USER_DESKTOP_DIR}" &>/dev/null || true
-        for theme_dir in "${USER_ICONS_DIR}"/*; do
-            if [ -d "$theme_dir" ]; then
-                gtk-update-icon-cache -f -t "$theme_dir" &>/dev/null || true
-            fi
-        done
-    fi
+    # Create user desktop entry
+    local user_desktop_dir="${HOME}/.local/share/applications"
+    cp "$system_desktop_file" "$user_desktop_dir/"
+    chown "$SUDO_USER:$(id -g "$SUDO_USER")" "$user_desktop_dir/${app_name}.desktop"
+
+    # Update desktop database for both locations
+    update-desktop-database "/usr/share/applications" &>/dev/null || true
+    update-desktop-database "$user_desktop_dir" &>/dev/null || true
 
     # Refresh desktop environment
     refresh_desktop_environment
@@ -250,47 +236,30 @@ EOF
 
 # Function to list installed applications
 list_applications() {
-    local is_root=$1
-    local apps_dir desktop_dir
-    local found=false
-    
-    if [[ "$is_root" == "true" ]]; then
-        apps_dir="${ROOT_APPS_DIR}"
-        desktop_dir="${ROOT_DESKTOP_DIR}"
-    else
-        apps_dir="${USER_APPS_DIR}"
-        desktop_dir="${USER_DESKTOP_DIR}"
-    fi
-
     printf "\n%s\n" "${BLUE}Installed AppImage Applications:${RESET}"
-    printf "%s\n" "${YELLOW}Location: ${apps_dir}${RESET}"
+    printf "%s\n" "${YELLOW}Location: ${ROOT_APPS_DIR}${RESET}"
     printf "%s\n" "----------------------------------------"
 
     # Check .desktop files for installed applications
-    if [[ -d "$desktop_dir" ]]; then
+    if [[ -d "${ROOT_DESKTOP_DIR}" ]]; then
         while IFS= read -r -d '' desktop_file; do
-            if grep -q "Exec=.*AppImage\|Exec=${apps_dir}" "$desktop_file"; then
+            if grep -q "Exec=.*AppImage\|Exec=${ROOT_APPS_DIR}" "$desktop_file"; then
                 local app_name
                 app_name=$(basename "$desktop_file" .desktop)
-                if [[ -f "${apps_dir}/${app_name}" ]]; then
-                    printf "📦 %s\n" "$app_name"
-                    found=true
+                if [[ -f "${ROOT_APPS_DIR}/${app_name}" ]]; then
+                    printf " %s\n" "$app_name"
                 fi
             fi
-        done < <(find "$desktop_dir" -name "*.desktop" -print0)
+        done < <(find "${ROOT_DESKTOP_DIR}" -name "*.desktop" -print0)
     fi
 
-    if [[ "$found" == "false" ]]; then
-        printf "No AppImage applications installed %s\n" "$(if [[ "$is_root" == "true" ]]; then echo "system-wide"; else echo "for current user"; fi)"
-    fi
     printf "\n"
 }
 
 # Function to uninstall application
 uninstall_app() {
     local app_name=$1
-    local is_root=$2
-    local apps_dir icons_dir desktop_dir success=false
+    local success=false
     
     # Prevent accidental removal of the tool itself
     if [[ "$app_name" == "appimage" ]]; then
@@ -298,52 +267,43 @@ uninstall_app() {
         exit 1
     fi
     
-    if [[ "$is_root" == "true" ]]; then
-        apps_dir="${ROOT_APPS_DIR}"
-        icons_dir="${ROOT_ICONS_DIR}"
-        desktop_dir="${ROOT_DESKTOP_DIR}"
-    else
-        apps_dir="${USER_APPS_DIR}"
-        icons_dir="${USER_ICONS_DIR}"
-        desktop_dir="${USER_DESKTOP_DIR}"
-    fi
-
     # Remove AppImage
-    if [[ -f "${apps_dir}/${app_name}" ]]; then
-        rm -f "${apps_dir}/${app_name}"
+    if [[ -f "/opt/${app_name}.AppImage" ]]; then
+        rm -f "/opt/${app_name}.AppImage"
         success=true
-        log "info" "Removed AppImage from ${apps_dir}/${app_name}"
+        log "info" "Removed AppImage from /opt/${app_name}.AppImage"
     fi
 
-    # Remove desktop entry
-    if [[ -f "${desktop_dir}/${app_name}.desktop" ]]; then
-        rm -f "${desktop_dir}/${app_name}.desktop"
+    # Remove icon
+    if [[ -f "/opt/${app_name}.png" ]]; then
+        rm -f "/opt/${app_name}.png"
         success=true
-        log "info" "Removed desktop entry from ${desktop_dir}/${app_name}.desktop"
+        log "info" "Removed icon from /opt/${app_name}.png"
+    fi
+    if [[ -f "/opt/${app_name}.svg" ]]; then
+        rm -f "/opt/${app_name}.svg"
+        success=true
+        log "info" "Removed icon from /opt/${app_name}.svg"
     fi
 
-    # Remove icons (try both PNG and SVG)
-    for size in "scalable" "128x128"; do
-        for ext in "png" "svg"; do
-            if [[ -f "${icons_dir}/${size}/apps/${app_name}.${ext}" ]]; then
-                rm -f "${icons_dir}/${size}/apps/${app_name}.${ext}"
-                success=true
-                log "info" "Removed icon from ${icons_dir}/${size}/apps/${app_name}.${ext}"
-            fi
-        done
-    done
+    # Remove desktop entries from both locations
+    if [[ -f "/usr/share/applications/${app_name}.desktop" ]]; then
+        rm -f "/usr/share/applications/${app_name}.desktop"
+        success=true
+        log "info" "Removed system desktop entry"
+    fi
+    
+    if [[ -f "${HOME}/.local/share/applications/${app_name}.desktop" ]]; then
+        rm -f "${HOME}/.local/share/applications/${app_name}.desktop"
+        success=true
+        log "info" "Removed user desktop entry"
+    fi
 
     # Update desktop database
     if [[ "$success" == "true" ]]; then
-        if [[ "$is_root" == "true" ]]; then
-            update-desktop-database "${ROOT_DESKTOP_DIR}" &>/dev/null || true
-            gtk-update-icon-cache -f -t "${ROOT_ICONS_DIR}" &>/dev/null || true
-        else
-            update-desktop-database "${USER_DESKTOP_DIR}" &>/dev/null || true
-            gtk-update-icon-cache -f -t "${USER_ICONS_DIR}" &>/dev/null || true
-        fi
+        update-desktop-database "/usr/share/applications" &>/dev/null || true
+        update-desktop-database "${HOME}/.local/share/applications" &>/dev/null || true
         log "info" "Application '${app_name}' has been removed successfully!"
-        log "warning" "You may need to log out and log back in for the changes to take effect in your application menu."
     else
         log "error" "No files found for application '${app_name}'. Make sure the name is correct and it was installed with this tool."
         log "info" "Use 'appimage list' to see all installed applications."
@@ -435,43 +395,18 @@ refresh_desktop_environment() {
     esac
 }
 
-# Update the check_and_elevate_privileges function
-check_and_elevate_privileges() {
+# Main script logic
+main() {
+    # Always require root permissions at the start
     if [[ $EUID -ne 0 ]]; then
         log "info" "Root privileges required. Requesting sudo access..."
         if ! command -v sudo >/dev/null 2>&1; then
             log "error" "sudo is not installed. Please install sudo or run this command as root."
             exit 1
         fi
-        
-        # Get the full path to the script
-        local script_path
-        script_path=$(which appimage || echo "$0")
-        
-        # Use full path when executing with sudo
-        exec sudo "$script_path" "$@"
+        exec sudo "$0" "$@"
     fi
-}
 
-# Add this function after setup_colors
-ensure_in_path() {
-    local script_dir
-    script_dir=$(dirname "$(readlink -f "$0")")
-    
-    if [[ ":$PATH:" != *":$script_dir:"* ]]; then
-        export PATH="$PATH:$script_dir"
-    fi
-    
-    # Also check for /usr/local/bin
-    if [[ ":$PATH:" != *":/usr/local/bin:"* ]]; then
-        export PATH="$PATH:/usr/local/bin"
-    fi
-}
-
-# Main script logic
-main() {
-    local is_root=false
-    
     # Check if no arguments provided
     if [[ $# -eq 0 ]]; then
         log "error" "No arguments provided."
@@ -489,18 +424,8 @@ main() {
             show_version
             exit 0
             ;;
-        --root)
-            is_root=true
-            check_and_elevate_privileges "$@"
-            shift
-            if [[ $# -eq 0 ]]; then
-                log "error" "No arguments provided after --root"
-                show_help
-                exit 1
-            fi
-            ;;
         list)
-            list_applications "$is_root"
+            list_applications
             exit 0
             ;;
         remove)
@@ -510,10 +435,7 @@ main() {
                 log "info" "Use 'appimage list' to see all installed applications."
                 exit 1
             fi
-            if [[ "$is_root" == "true" ]]; then
-                check_and_elevate_privileges "$@"
-            fi
-            uninstall_app "$2" "$is_root"
+            uninstall_app "$2"
             exit 0
             ;;
         uninstall)
@@ -521,9 +443,6 @@ main() {
                 log "error" "The uninstall command doesn't take any additional arguments."
                 printf "\n%s\n" "${YELLOW}Usage:${RESET} appimage uninstall"
                 exit 1
-            fi
-            if [[ "$is_root" == "true" ]]; then
-                check_and_elevate_privileges "$@"
             fi
             remove_tool
             exit 0
@@ -538,10 +457,10 @@ main() {
             ;;
     esac
 
-    # If we get here, we're doing an installation
+    # Installation logic
     if [[ $# -ne 2 ]]; then
         log "error" "Incorrect number of arguments for installation."
-        printf "\n%s\n" "${YELLOW}Usage:${RESET} appimage [--root] <path_to_appimage> <path_to_icon>"
+        printf "\n%s\n" "${YELLOW}Usage:${RESET} appimage <path_to_appimage> <path_to_icon>"
         exit 1
     fi
 
@@ -554,31 +473,25 @@ main() {
 
     # Create necessary directories
     log "info" "Creating required directories..."
-    create_directories "$is_root"
+    create_directories
 
     # Install AppImage
     log "info" "Installing AppImage..."
     local installed_app_path
-    installed_app_path=$(install_appimage "$appimage_path" "$is_root")
+    installed_app_path=$(install_appimage "$appimage_path")
 
     # Install icon
     log "info" "Installing icon..."
-    local installed_icon_name
-    installed_icon_name=$(install_icon "$icon_path" "$(basename "$appimage_path" .AppImage)" "$is_root")
+    local installed_icon_path
+    installed_icon_path=$(install_icon "$icon_path" "$(basename "$appimage_path" .AppImage)")
 
     # Create desktop entry
     log "info" "Creating desktop entry..."
-    create_desktop_entry "$installed_app_path" "$installed_icon_name" "$is_root"
+    create_desktop_entry "$installed_app_path" "$installed_icon_path"
 
     log "info" "Installation completed successfully!"
     log "info" "The application has been installed and should appear in your applications menu."
-    log "warning" "If you don't see the application immediately, try one of these steps:"
-    log "info" "1. Wait a few seconds for the desktop environment to refresh"
-    log "info" "2. Log out and log back in"
-    log "info" "3. Run: killall plasmashell && plasmashell & (for KDE)"
-    log "info" "4. Run: killall gnome-shell (for GNOME, press ALT+F2, type 'r' and press Enter)"
 }
 
 # Execute main function
-ensure_in_path
 main "$@" 
