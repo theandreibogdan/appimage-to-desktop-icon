@@ -140,6 +140,21 @@ else
     add_to_path "${HOME}/.profile"
 fi
 
+# Add after making the script executable
+log "info" "Creating system-wide symlink..."
+if [ "$EUID" -eq 0 ]; then
+    # If running as root, create the symlink directly
+    ln -sf "${INSTALL_DIR}/appimage" /usr/local/bin/appimage
+else
+    # If running as user, use sudo to create the symlink
+    if command -v sudo >/dev/null 2>&1; then
+        sudo ln -sf "${INSTALL_DIR}/appimage" /usr/local/bin/appimage
+    else
+        log "warning" "Could not create system-wide symlink. sudo is not available."
+        log "info" "The tool will only be available in your user's PATH."
+    fi
+fi
+
 log "info" "Installation completed successfully!"
 log "info" "You can now use the 'appimage' command to integrate AppImage applications."
 log "info" "Run 'appimage --help' for usage instructions."

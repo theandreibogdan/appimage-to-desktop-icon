@@ -4,7 +4,7 @@
 set -euo pipefail
 
 # Version
-VERSION="1.2.2"
+VERSION="1.2.3"
 
 # Color definitions
 setup_colors() {
@@ -58,8 +58,8 @@ show_help() {
     printf "    uninstall      Remove the appimage tool from your system\n"
     printf "\n"
     printf "%s\n" "${YELLOW}Examples:${RESET}"
-    printf "    appimage ~/Downloads/MyApp.AppImage ~/Downloads/icon.png\n"
-    printf "    sudo appimage --root ~/Downloads/MyApp.AppImage ~/Downloads/icon.png\n"
+    printf "    appimage ~/Downloads/MyApp.AppImage ~/Downloads/icon.png     # User installation\n"
+    printf "    appimage --root ~/Downloads/MyApp.AppImage ~/Downloads/icon.png  # System-wide installation\n"
     printf "    appimage list\n"
     printf "    appimage remove MyApp\n"
     printf "    sudo appimage --root remove MyApp\n"
@@ -435,7 +435,7 @@ refresh_desktop_environment() {
     esac
 }
 
-# Add this function near the top of the file, after the color definitions
+# Update the check_and_elevate_privileges function
 check_and_elevate_privileges() {
     if [[ $EUID -ne 0 ]]; then
         log "info" "Root privileges required. Requesting sudo access..."
@@ -443,7 +443,28 @@ check_and_elevate_privileges() {
             log "error" "sudo is not installed. Please install sudo or run this command as root."
             exit 1
         fi
-        exec sudo "$0" "$@"
+        
+        # Get the full path to the script
+        local script_path
+        script_path=$(which appimage || echo "$0")
+        
+        # Use full path when executing with sudo
+        exec sudo "$script_path" "$@"
+    fi
+}
+
+# Add this function after setup_colors
+ensure_in_path() {
+    local script_dir
+    script_dir=$(dirname "$(readlink -f "$0")")
+    
+    if [[ ":$PATH:" != *":$script_dir:"* ]]; then
+        export PATH="$PATH:$script_dir"
+    fi
+    
+    # Also check for /usr/local/bin
+    if [[ ":$PATH:" != *":/usr/local/bin:"* ]]; then
+        export PATH="$PATH:/usr/local/bin"
     fi
 }
 
@@ -559,4 +580,5 @@ main() {
 }
 
 # Execute main function
+ensure_in_path
 main "$@" 
