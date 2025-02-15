@@ -1,6 +1,6 @@
 # AppImage to Desktop Icon 🚀
 
-CLI tool that seamlessly integrates AppImage applications into your Linux desktop environment.
+A professional CLI tool that seamlessly integrates AppImage applications into your Linux desktop environment.
 
 ## Features
 
@@ -10,6 +10,8 @@ CLI tool that seamlessly integrates AppImage applications into your Linux deskto
 - 🔒 Follows XDG Base Directory specifications
 - 🛠️ Easy to use command-line interface
 - 🔑 Supports both user-level and system-wide installations
+- 🗑️ Clean uninstallation support
+- 🧹 Self-removal capability
 
 ## Installation
 
@@ -22,21 +24,42 @@ curl -sSL https://raw.githubusercontent.com/theandreibogdan/appimage-to-desktop-
 ## Usage
 
 ```bash
-# User installation (recommended)
+# Install application (user-level, recommended)
 appimage [path_to_appimage] [path_to_icon]
 
-# System-wide installation (requires sudo)
+# Install application (system-wide, requires sudo)
 sudo appimage --root [path_to_appimage] [path_to_icon]
+
+# Uninstall application (user-level)
+appimage uninstall [app_name]
+
+# Uninstall application (system-wide)
+sudo appimage --root uninstall [app_name]
+
+# Remove the tool itself (user installation)
+appimage remove
+
+# Remove the tool itself (system-wide installation)
+sudo appimage remove
 ```
 
 ### Examples
 
 ```bash
-# Basic usage with an AppImage and icon (user installation)
+# Install an AppImage (user-level)
 appimage ~/Downloads/MyApp.AppImage ~/Downloads/icon.png
 
-# System-wide installation
+# Install an AppImage (system-wide)
 sudo appimage --root ~/Downloads/MyApp.AppImage ~/Downloads/icon.png
+
+# Uninstall an application (user-level)
+appimage uninstall MyApp
+
+# Uninstall an application (system-wide)
+sudo appimage --root uninstall MyApp
+
+# Remove the tool from your system
+appimage remove
 
 # Get help
 appimage --help
@@ -59,6 +82,18 @@ appimage --help
 5. Generates and installs the .desktop file
 6. Updates desktop database for immediate availability
 
+When uninstalling an application:
+1. Removes the AppImage from the applications directory
+2. Removes the desktop entry
+3. Removes associated icons
+4. Updates the desktop database
+
+When removing the tool:
+1. Detects installation location (user or system-wide)
+2. Removes the script from the appropriate location
+3. Cleans up PATH entries if necessary
+4. Provides feedback about the removal process
+
 ## Directory Structure
 
 The tool follows the XDG Base Directory specification:
@@ -75,7 +110,7 @@ For system-wide installations:
 
 ## Desktop Environment Integration
 
-After installation, the application should appear in your applications menu. If it doesn't appear immediately:
+After installation or uninstallation, the changes should appear in your applications menu. If you don't see the changes immediately:
 
 1. Wait a few seconds for the desktop environment to refresh
 2. Log out and log back in

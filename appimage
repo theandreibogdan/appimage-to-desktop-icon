@@ -4,7 +4,7 @@
 set -euo pipefail
 
 # Version
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 # Color definitions
 RED='\033[0;31m'
@@ -29,15 +29,22 @@ ${BLUE}AppImage to Desktop Icon${NC} - Version ${VERSION}
 
 ${YELLOW}Usage:${NC}
     appimage [OPTIONS] <path_to_appimage> <path_to_icon>
+    appimage uninstall <app_name>
+    appimage remove
 
 ${YELLOW}Options:${NC}
     -h, --help     Show this help message
     -v, --version  Show version information
     --root         Install the application system-wide (requires sudo)
+    uninstall      Remove an installed AppImage application
+    remove         Remove the appimage tool from your system
 
-${YELLOW}Example:${NC}
+${YELLOW}Examples:${NC}
     appimage ~/Downloads/MyApp.AppImage ~/Downloads/icon.png
     sudo appimage --root ~/Downloads/MyApp.AppImage ~/Downloads/icon.png
+    appimage uninstall MyApp
+    sudo appimage --root uninstall MyApp
+    appimage remove
 
 ${YELLOW}Description:${NC}
     This tool integrates AppImage applications into your Linux desktop environment
@@ -82,7 +89,7 @@ validate_file() {
     if [[ ! -r "$file" ]]; then
         log "error" "The $type file '$file' is not readable."
         exit 1
-    }
+    fi
 }
 
 # Function to create necessary directories
@@ -186,6 +193,99 @@ EOF
     fi
 }
 
+# Function to uninstall application
+uninstall_app() {
+    local app_name=$1
+    local is_root=$2
+    local apps_dir icons_dir desktop_dir success=false
+    
+    if [[ "$is_root" == "true" ]]; then
+        apps_dir="${ROOT_APPS_DIR}"
+        icons_dir="${ROOT_ICONS_DIR}"
+        desktop_dir="${ROOT_DESKTOP_DIR}"
+    else
+        apps_dir="${USER_APPS_DIR}"
+        icons_dir="${USER_ICONS_DIR}"
+        desktop_dir="${USER_DESKTOP_DIR}"
+    fi
+
+    # Remove AppImage
+    if [[ -f "${apps_dir}/${app_name}" ]]; then
+        rm -f "${apps_dir}/${app_name}"
+        success=true
+        log "info" "Removed AppImage from ${apps_dir}/${app_name}"
+    fi
+
+    # Remove desktop entry
+    if [[ -f "${desktop_dir}/${app_name}.desktop" ]]; then
+        rm -f "${desktop_dir}/${app_name}.desktop"
+        success=true
+        log "info" "Removed desktop entry from ${desktop_dir}/${app_name}.desktop"
+    fi
+
+    # Remove icons (try both PNG and SVG)
+    for size in "scalable" "128x128"; do
+        for ext in "png" "svg"; do
+            if [[ -f "${icons_dir}/${size}/apps/${app_name}.${ext}" ]]; then
+                rm -f "${icons_dir}/${size}/apps/${app_name}.${ext}"
+                success=true
+                log "info" "Removed icon from ${icons_dir}/${size}/apps/${app_name}.${ext}"
+            fi
+        done
+    done
+
+    # Update desktop database
+    if [[ "$success" == "true" ]]; then
+        if [[ "$is_root" == "true" ]]; then
+            update-desktop-database "${ROOT_DESKTOP_DIR}" &>/dev/null || true
+            gtk-update-icon-cache -f -t "${ROOT_ICONS_DIR}" &>/dev/null || true
+        else
+            update-desktop-database "${USER_DESKTOP_DIR}" &>/dev/null || true
+            gtk-update-icon-cache -f -t "${USER_ICONS_DIR}" &>/dev/null || true
+        fi
+        log "info" "Application '${app_name}' has been uninstalled successfully!"
+        log "warning" "You may need to log out and log back in for the changes to take effect in your application menu."
+    else
+        log "error" "No files found for application '${app_name}'. Make sure the name is correct and it was installed with this tool."
+        exit 1
+    fi
+}
+
+# Function to remove the tool itself
+remove_tool() {
+    local script_path
+    script_path=$(which appimage)
+    
+    if [[ -z "$script_path" ]]; then
+        log "error" "Could not find the appimage tool in your PATH"
+        exit 1
+    fi
+    
+    # Check if the script is in a system directory
+    if [[ "$script_path" == "/usr/"* ]] || [[ "$script_path" == "/opt/"* ]]; then
+        if [[ $EUID -ne 0 ]]; then
+            log "error" "The tool is installed system-wide. Please run: sudo appimage remove"
+            exit 1
+        fi
+    fi
+    
+    # Remove the script
+    rm -f "$script_path"
+    log "info" "Removed appimage tool from: $script_path"
+    
+    # Check if we need to clean up PATH in .bashrc
+    if grep -q "export PATH=\"\$PATH:${HOME}/.local/bin\"" ~/.bashrc; then
+        # Only remove the PATH if .local/bin is empty
+        if [[ ! -d "${HOME}/.local/bin" ]] || [[ -z "$(ls -A "${HOME}/.local/bin")" ]]; then
+            sed -i '/export PATH="\$PATH:${HOME}\/.local\/bin"/d' ~/.bashrc
+            log "info" "Removed .local/bin from PATH in .bashrc"
+            log "info" "Please run: source ~/.bashrc to apply changes"
+        fi
+    fi
+    
+    log "info" "The appimage tool has been successfully removed from your system."
+}
+
 # Main script logic
 main() {
     local is_root=false
@@ -206,13 +306,27 @@ main() {
                 check_root
                 shift
                 ;;
+            uninstall)
+                shift
+                if [[ $# -ne 1 ]]; then
+                    log "error" "Please provide the application name to uninstall."
+                    show_help
+                    exit 1
+                fi
+                uninstall_app "$1" "$is_root"
+                exit 0
+                ;;
+            remove)
+                remove_tool
+                exit 0
+                ;;
             *)
                 break
                 ;;
         esac
     done
 
-    # Check if correct number of arguments provided
+    # Check if correct number of arguments provided for installation
     if [[ $# -ne 2 ]]; then
         log "error" "Incorrect number of arguments."
         show_help
