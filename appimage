@@ -4,7 +4,7 @@
 set -euo pipefail
 
 # Version
-VERSION="1.1.2"
+VERSION="1.1.3"
 
 # Color definitions
 setup_colors() {
@@ -215,6 +215,12 @@ uninstall_app() {
     local is_root=$2
     local apps_dir icons_dir desktop_dir success=false
     
+    # Prevent accidental removal of the tool itself
+    if [[ "$app_name" == "appimage" ]]; then
+        log "error" "Cannot uninstall the tool itself. Use 'appimage remove' instead."
+        exit 1
+    }
+    
     if [[ "$is_root" == "true" ]]; then
         apps_dir="${ROOT_APPS_DIR}"
         icons_dir="${ROOT_ICONS_DIR}"
@@ -306,46 +312,65 @@ remove_tool() {
 main() {
     local is_root=false
     
-    # Parse command line arguments
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            -h|--help)
-                show_help
-                exit 0
-                ;;
-            -v|--version)
-                show_version
-                exit 0
-                ;;
-            --root)
-                is_root=true
-                check_root
-                shift
-                ;;
-            uninstall)
-                shift
-                if [[ $# -ne 1 ]]; then
-                    log "error" "Please provide the application name to uninstall."
-                    show_help
-                    exit 1
-                fi
-                uninstall_app "$1" "$is_root"
-                exit 0
-                ;;
-            remove)
-                remove_tool
-                exit 0
-                ;;
-            *)
-                break
-                ;;
-        esac
-    done
-
-    # Check if correct number of arguments provided for installation
-    if [[ $# -ne 2 ]]; then
-        log "error" "Incorrect number of arguments."
+    # Check if no arguments provided
+    if [[ $# -eq 0 ]]; then
+        log "error" "No arguments provided."
         show_help
+        exit 1
+    fi
+
+    # Parse command line arguments
+    case "$1" in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -v|--version)
+            show_version
+            exit 0
+            ;;
+        --root)
+            is_root=true
+            check_root
+            shift
+            if [[ $# -eq 0 ]]; then
+                log "error" "No arguments provided after --root"
+                show_help
+                exit 1
+            fi
+            ;;
+        uninstall)
+            if [[ $# -ne 2 ]]; then
+                log "error" "Please provide the application name to uninstall."
+                printf "\n%s\n" "${YELLOW}Usage:${RESET} appimage uninstall <app_name>"
+                exit 1
+            fi
+            uninstall_app "$2" "$is_root"
+            exit 0
+            ;;
+        remove)
+            if [[ $# -ne 1 ]]; then
+                log "error" "The remove command doesn't take any additional arguments."
+                printf "\n%s\n" "${YELLOW}Usage:${RESET} appimage remove"
+                exit 1
+            fi
+            remove_tool
+            exit 0
+            ;;
+        *)
+            # Handle installation case
+            if [[ $1 == -* ]]; then
+                log "error" "Unknown option: $1"
+                show_help
+                exit 1
+            fi
+            ;;
+    esac
+
+    # If we get here, we're doing an installation
+    if [[ $# -ne 2 ]]; then
+        log "error" "Incorrect number of arguments for installation."
+        printf "\n%s\n" "${YELLOW}Usage:${RESET} appimage [--root] <path_to_appimage> <path_to_icon>"
         exit 1
     fi
 
