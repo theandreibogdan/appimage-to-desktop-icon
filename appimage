@@ -192,24 +192,46 @@ create_desktop_entry() {
     desktop_dir=$(if [[ "$is_root" == "true" ]]; then echo "${ROOT_DESKTOP_DIR}"; else echo "${USER_DESKTOP_DIR}"; fi)
     desktop_file="${desktop_dir}/${app_name}.desktop"
     
+    # Get application name from AppImage if possible
+    local display_name
+    if [ -x "$app_path" ]; then
+        display_name=$("$app_path" --appimage-offset >/dev/null 2>&1 && "$app_path" --name 2>/dev/null || echo "$app_name")
+    else
+        display_name="$app_name"
+    fi
+    
     cat > "$desktop_file" << EOF
 [Desktop Entry]
-Name=${app_name}
+Name=${display_name}
 Exec=${app_path}
 Icon=${icon_name}
 Type=Application
 Categories=Application;
 Terminal=false
+StartupNotify=true
 EOF
+
+    chmod +x "$desktop_file"
 
     # Update desktop database
     if [[ "$is_root" == "true" ]]; then
         update-desktop-database "${ROOT_DESKTOP_DIR}" &>/dev/null || true
-        gtk-update-icon-cache -f -t "${ROOT_ICONS_DIR}" &>/dev/null || true
+        for theme_dir in "${ROOT_ICONS_DIR}"/*; do
+            if [ -d "$theme_dir" ]; then
+                gtk-update-icon-cache -f -t "$theme_dir" &>/dev/null || true
+            fi
+        done
     else
         update-desktop-database "${USER_DESKTOP_DIR}" &>/dev/null || true
-        gtk-update-icon-cache -f -t "${USER_ICONS_DIR}" &>/dev/null || true
+        for theme_dir in "${USER_ICONS_DIR}"/*; do
+            if [ -d "$theme_dir" ]; then
+                gtk-update-icon-cache -f -t "$theme_dir" &>/dev/null || true
+            fi
+        done
     fi
+
+    # Refresh desktop environment
+    refresh_desktop_environment
 }
 
 # Function to list installed applications
@@ -348,6 +370,55 @@ remove_tool() {
     fi
     
     log "info" "The appimage tool has been successfully removed from your system."
+}
+
+# Function to detect desktop environment
+detect_desktop_environment() {
+    if [ -n "${XDG_CURRENT_DESKTOP:-}" ]; then
+        echo "$XDG_CURRENT_DESKTOP"
+    elif [ -n "${DESKTOP_SESSION:-}" ]; then
+        echo "$DESKTOP_SESSION"
+    else
+        echo "unknown"
+    fi
+}
+
+# Function to refresh desktop environment
+refresh_desktop_environment() {
+    local de
+    de=$(detect_desktop_environment | tr '[:upper:]' '[:lower:]')
+    
+    case "$de" in
+        *kde*|*plasma*)
+            if command -v plasmashell >/dev/null 2>&1; then
+                killall plasmashell 2>/dev/null
+                nohup plasmashell >/dev/null 2>&1 &
+            fi
+            ;;
+        *gnome*|*unity*)
+            if command -v gnome-shell >/dev/null 2>&1; then
+                killall -HUP gnome-shell 2>/dev/null
+            fi
+            ;;
+        *xfce*)
+            if command -v xfdesktop >/dev/null 2>&1; then
+                xfdesktop --reload 2>/dev/null
+            fi
+            ;;
+        *cinnamon*)
+            if command -v cinnamon >/dev/null 2>&1; then
+                killall -HUP cinnamon-launcher 2>/dev/null
+            fi
+            ;;
+        *mate*)
+            if command -v mate-panel >/dev/null 2>&1; then
+                mate-panel --replace & 2>/dev/null
+            fi
+            ;;
+        *)
+            log "warning" "Unknown desktop environment. Manual refresh may be required."
+            ;;
+    esac
 }
 
 # Main script logic
