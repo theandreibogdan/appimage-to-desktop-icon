@@ -1,0 +1,1 @@
+# appimage-to-desktop-icon
