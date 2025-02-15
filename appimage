@@ -38,6 +38,22 @@ ROOT_APPS_DIR="/opt"
 ROOT_ICONS_DIR="/opt"
 ROOT_DESKTOP_DIR="/usr/share/applications"
 
+# Add this function after the setup_colors function
+show_spinner() {
+    local pid=$1
+    local delay=0.1
+    local spinstr='|/-\'
+    local msg="${2:-}"
+    
+    while ps a | awk '{print $1}' | grep -q "$pid"; do
+        local temp=${spinstr#?}
+        printf "\r%s [%c] " "$msg" "$spinstr"
+        local spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+    done
+    printf "\r%s [✓]\n" "$msg"
+}
+
 # Function to display usage information
 show_help() {
     printf "\n"
@@ -264,42 +280,47 @@ uninstall_app() {
         exit 1
     fi
     
-    # Remove AppImage
-    if [[ -f "/opt/${app_name}.AppImage" ]]; then
-        rm -f "/opt/${app_name}.AppImage"
-        success=true
-        log "info" "Removed AppImage from /opt/${app_name}.AppImage"
-    fi
+    # Remove files with spinner
+    (
+        # Remove AppImage
+        if [[ -f "/opt/${app_name}.AppImage" ]]; then
+            rm -f "/opt/${app_name}.AppImage"
+            echo "Removed AppImage" >> /tmp/uninstall_progress
+        fi
 
-    # Remove icon
-    if [[ -f "/opt/${app_name}.png" ]]; then
-        rm -f "/opt/${app_name}.png"
-        success=true
-        log "info" "Removed icon from /opt/${app_name}.png"
-    fi
-    if [[ -f "/opt/${app_name}.svg" ]]; then
-        rm -f "/opt/${app_name}.svg"
-        success=true
-        log "info" "Removed icon from /opt/${app_name}.svg"
-    fi
+        # Remove icons
+        if [[ -f "/opt/${app_name}.png" ]]; then
+            rm -f "/opt/${app_name}.png"
+            echo "Removed PNG icon" >> /tmp/uninstall_progress
+        fi
+        if [[ -f "/opt/${app_name}.svg" ]]; then
+            rm -f "/opt/${app_name}.svg"
+            echo "Removed SVG icon" >> /tmp/uninstall_progress
+        fi
 
-    # Remove desktop entries from both locations
-    if [[ -f "/usr/share/applications/${app_name}.desktop" ]]; then
-        rm -f "/usr/share/applications/${app_name}.desktop"
-        success=true
-        log "info" "Removed system desktop entry"
-    fi
-    
-    if [[ -f "${HOME}/.local/share/applications/${app_name}.desktop" ]]; then
-        rm -f "${HOME}/.local/share/applications/${app_name}.desktop"
-        success=true
-        log "info" "Removed user desktop entry"
-    fi
+        # Remove desktop entries
+        if [[ -f "/usr/share/applications/${app_name}.desktop" ]]; then
+            rm -f "/usr/share/applications/${app_name}.desktop"
+            echo "Removed system desktop entry" >> /tmp/uninstall_progress
+        fi
+        
+        if [[ -f "${HOME}/.local/share/applications/${app_name}.desktop" ]]; then
+            rm -f "${HOME}/.local/share/applications/${app_name}.desktop"
+            echo "Removed user desktop entry" >> /tmp/uninstall_progress
+        fi
 
-    # Update desktop database
-    if [[ "$success" == "true" ]]; then
+        # Update desktop database
         update-desktop-database "/usr/share/applications" &>/dev/null || true
         update-desktop-database "${HOME}/.local/share/applications" &>/dev/null || true
+    ) & show_spinner $! "Removing application files"
+
+    # Check if any files were removed
+    if [[ -f /tmp/uninstall_progress ]]; then
+        success=true
+        while IFS= read -r line; do
+            log "info" "$line"
+        done < /tmp/uninstall_progress
+        rm -f /tmp/uninstall_progress
         log "info" "Application '${app_name}' has been removed successfully!"
     else
         log "error" "No files found for application '${app_name}'. Make sure the name is correct and it was installed with this tool."
@@ -475,21 +496,29 @@ main() {
 
     # Create necessary directories
     log "info" "Creating required directories..."
-    create_directories
+    (create_directories) & show_spinner $! "Creating directories"
 
     # Install AppImage
     log "info" "Installing AppImage..."
-    local installed_app_path
-    installed_app_path=$(install_appimage "$appimage_path")
+    (
+        installed_app_path=$(install_appimage "$appimage_path")
+        echo "$installed_app_path" > /tmp/installed_app_path
+    ) & show_spinner $! "Installing AppImage"
+    installed_app_path=$(cat /tmp/installed_app_path)
+    rm -f /tmp/installed_app_path
 
     # Install icon
     log "info" "Installing icon..."
-    local installed_icon_path
-    installed_icon_path=$(install_icon "$icon_path" "$(basename "$appimage_path" .AppImage)")
+    (
+        installed_icon_path=$(install_icon "$icon_path" "$(basename "$appimage_path" .AppImage)")
+        echo "$installed_icon_path" > /tmp/installed_icon_path
+    ) & show_spinner $! "Installing icon"
+    installed_icon_path=$(cat /tmp/installed_icon_path)
+    rm -f /tmp/installed_icon_path
 
     # Create desktop entry
     log "info" "Creating desktop entry..."
-    create_desktop_entry "$installed_app_path" "$installed_icon_path"
+    (create_desktop_entry "$installed_app_path" "$installed_icon_path") & show_spinner $! "Creating desktop entry"
 
     log "info" "Installation completed successfully!"
     log "info" "The application has been installed and should appear in your applications menu."
