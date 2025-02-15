@@ -1,6 +1,6 @@
-# AppImage to Desktop Icon 🚀
+# AppImage Installer 🚀
 
-A professional CLI tool that seamlessly integrates AppImage applications into your Linux desktop environment.
+CLI tool that seamlessly integrates AppImage applications into your Linux desktop environment.
 
 ## Features
 
