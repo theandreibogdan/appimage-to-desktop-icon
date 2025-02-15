@@ -4,7 +4,7 @@
 set -euo pipefail
 
 # Version
-VERSION="1.1.1"
+VERSION="1.1.2"
 
 # Color definitions
 setup_colors() {
@@ -40,6 +40,7 @@ ROOT_DESKTOP_DIR="/usr/share/applications"
 
 # Function to display usage information
 show_help() {
+    printf "\n"
     printf "%s\n" "${BLUE}AppImage to Desktop Icon${RESET} - Version ${VERSION}"
     printf "\n"
     printf "%s\n" "${YELLOW}Usage:${RESET}"
@@ -64,6 +65,7 @@ show_help() {
     printf "%s\n" "${YELLOW}Description:${RESET}"
     printf "    This tool integrates AppImage applications into your Linux desktop environment\n"
     printf "    by creating the necessary desktop entries and handling icon integration.\n"
+    printf "\n"
 }
 
 # Function to show version
