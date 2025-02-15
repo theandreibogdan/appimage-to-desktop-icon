@@ -114,34 +114,13 @@ validate_file() {
 # Function to create necessary directories
 create_directories() {
     mkdir -p "${ROOT_APPS_DIR}"
-    mkdir -p "${ROOT_ICONS_DIR}/scalable/apps"
-    mkdir -p "${ROOT_ICONS_DIR}/128x128/apps"
     mkdir -p "${ROOT_DESKTOP_DIR}"
     
     chown root:root "${ROOT_APPS_DIR}"
-    chown -R root:root "${ROOT_ICONS_DIR}"
     chown root:root "${ROOT_DESKTOP_DIR}"
     
     chmod 755 "${ROOT_APPS_DIR}"
-    chmod -R 755 "${ROOT_ICONS_DIR}"
     chmod 755 "${ROOT_DESKTOP_DIR}"
-}
-
-# Function to get icon size and format
-get_icon_info() {
-    local icon_path=$1
-    local mime_type
-    mime_type=$(file --mime-type -b "$icon_path")
-    
-    case "$mime_type" in
-        "image/svg"*) echo "scalable" ;;
-        "image/png"|"image/jpeg") 
-            # For now, we'll put all bitmap images in 128x128
-            echo "128x128" ;;
-        *)
-            log "error" "Unsupported icon format: $mime_type"
-            exit 1 ;;
-    esac
 }
 
 # Function to install the AppImage
