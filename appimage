@@ -44,7 +44,7 @@ show_help() {
     printf "%s\n" "AppImage to Desktop Icon - Version ${VERSION}"
     printf "\n"
     printf "%s\n" "${YELLOW}Usage:${RESET}"
-    printf "    appimage [OPTIONS] <path_to_appimage> <path_to_icon>\n"
+    printf "    appimage <path_to_appimage> <path_to_icon>\n"
     printf "    appimage remove <app_name>\n"
     printf "    appimage list\n"
     printf "    appimage uninstall\n"
@@ -52,22 +52,20 @@ show_help() {
     printf "%s\n" "${YELLOW}Options:${RESET}"
     printf "    -h, --help     Show this help message\n"
     printf "    -v, --version  Show version information\n"
-    printf "    --root         Install the application system-wide (requires sudo)\n"
     printf "    remove         Remove an installed AppImage application\n"
     printf "    list           List all installed AppImage applications\n"
     printf "    uninstall      Remove the appimage tool from your system\n"
     printf "\n"
     printf "%s\n" "${YELLOW}Examples:${RESET}"
-    printf "    appimage ~/Downloads/MyApp.AppImage ~/Downloads/icon.png     # User installation\n"
-    printf "    appimage --root ~/Downloads/MyApp.AppImage ~/Downloads/icon.png  # System-wide installation\n"
-    printf "    appimage list\n"
-    printf "    appimage remove MyApp\n"
-    printf "    sudo appimage --root remove MyApp\n"
-    printf "    appimage uninstall\n"
+    printf "    appimage ~/Downloads/MyApp.AppImage ~/Downloads/icon.png     # Install application\n"
+    printf "    appimage list                                               # List installed applications\n"
+    printf "    appimage remove MyApp                                       # Remove application\n"
+    printf "    appimage uninstall                                         # Remove the tool\n"
     printf "\n"
     printf "%s\n" "${YELLOW}Description:${RESET}"
     printf "    This tool integrates AppImage applications into your Linux desktop environment\n"
     printf "    by creating the necessary desktop entries and handling icon integration.\n"
+    printf "    All applications are installed in /opt with sudo permissions.\n"
     printf "\n"
 }
 
@@ -231,34 +229,20 @@ list_applications() {
     printf "\n%s\n" "${BLUE}Installed AppImage Applications:${RESET}"
     printf "%s\n" "----------------------------------------"
 
-    # Function to extract app info from desktop file
-    parse_desktop_file() {
-        local desktop_file=$1
-        local name exec icon
-        
-        name=$(grep "^Name=" "$desktop_file" | cut -d'=' -f2-)
-        exec=$(grep "^Exec=" "$desktop_file" | cut -d'=' -f2-)
-        icon=$(grep "^Icon=" "$desktop_file" | cut -d'=' -f2-)
-        
-        # Check if it's an AppImage (either in /opt or ends with .AppImage)
-        if [[ "$exec" == *".AppImage"* ]] || [[ "$exec" == "/opt/"* ]]; then
-            printf "📦 %-30s [%s]\n" "$name" "$(basename "$exec")"
-            found=true
-        fi
-    }
-
-    # Check system-wide desktop entries
-    if [[ -d "/usr/share/applications" ]]; then
-        while IFS= read -r -d '' desktop_file; do
-            parse_desktop_file "$desktop_file"
-        done < <(find "/usr/share/applications" -name "*.desktop" -print0)
-    fi
-
-    # Check user desktop entries
-    if [[ -d "${HOME}/.local/share/applications" ]]; then
-        while IFS= read -r -d '' desktop_file; do
-            parse_desktop_file "$desktop_file"
-        done < <(find "${HOME}/.local/share/applications" -name "*.desktop" -print0)
+    # First check /opt directory for AppImage files
+    if [[ -d "/opt" ]]; then
+        while IFS= read -r -d '' appimage_file; do
+            local app_name
+            app_name=$(basename "$appimage_file" .AppImage)
+            
+            # Check if there's a corresponding desktop file
+            if [[ -f "/usr/share/applications/${app_name}.desktop" ]]; then
+                local display_name
+                display_name=$(grep "^Name=" "/usr/share/applications/${app_name}.desktop" | cut -d'=' -f2-)
+                printf "📦 %-30s [%s]\n" "${display_name:-$app_name}" "$(basename "$appimage_file")"
+                found=true
+            fi
+        done < <(find "/opt" -maxdepth 1 -name "*.AppImage" -print0)
     fi
 
     if [[ "$found" == "false" ]]; then
