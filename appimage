@@ -1,0 +1,257 @@
+#!/usr/bin/env bash
+
+# Set strict error handling
+set -euo pipefail
+
+# Version
+VERSION="1.0.0"
+
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Base directories following XDG specification
+USER_APPS_DIR="${HOME}/.local/bin"
+USER_ICONS_DIR="${HOME}/.local/share/icons/hicolor"
+USER_DESKTOP_DIR="${HOME}/.local/share/applications"
+
+ROOT_APPS_DIR="/usr/local/bin"
+ROOT_ICONS_DIR="/usr/share/icons/hicolor"
+ROOT_DESKTOP_DIR="/usr/share/applications"
+
+# Function to display usage information
+show_help() {
+    cat << EOF
+${BLUE}AppImage to Desktop Icon${NC} - Version ${VERSION}
+
+${YELLOW}Usage:${NC}
+    appimage [OPTIONS] <path_to_appimage> <path_to_icon>
+
+${YELLOW}Options:${NC}
+    -h, --help     Show this help message
+    -v, --version  Show version information
+    --root         Install the application system-wide (requires sudo)
+
+${YELLOW}Example:${NC}
+    appimage ~/Downloads/MyApp.AppImage ~/Downloads/icon.png
+    sudo appimage --root ~/Downloads/MyApp.AppImage ~/Downloads/icon.png
+
+${YELLOW}Description:${NC}
+    This tool integrates AppImage applications into your Linux desktop environment
+    by creating the necessary desktop entries and handling icon integration.
+EOF
+}
+
+# Function to show version
+show_version() {
+    echo -e "${BLUE}AppImage to Desktop Icon${NC} - Version ${VERSION}"
+}
+
+# Function to log messages
+log() {
+    local level=$1
+    shift
+    case "$level" in
+        "error")   echo -e "${RED}[ERROR]${NC} $*" >&2 ;;
+        "info")    echo -e "${GREEN}[INFO]${NC} $*" ;;
+        "warning") echo -e "${YELLOW}[WARNING]${NC} $*" ;;
+    esac
+}
+
+# Function to check if running as root
+check_root() {
+    if [[ $EUID -ne 0 ]]; then
+        log "error" "Root installation requires sudo privileges. Please run with: sudo appimage --root ..."
+        exit 1
+    fi
+}
+
+# Function to validate file existence and permissions
+validate_file() {
+    local file=$1
+    local type=$2
+    
+    if [[ ! -f "$file" ]]; then
+        log "error" "The $type file '$file' does not exist."
+        exit 1
+    fi
+    
+    if [[ ! -r "$file" ]]; then
+        log "error" "The $type file '$file' is not readable."
+        exit 1
+    }
+}
+
+# Function to create necessary directories
+create_directories() {
+    local is_root=$1
+    local apps_dir icons_dir desktop_dir
+
+    if [[ "$is_root" == "true" ]]; then
+        apps_dir="${ROOT_APPS_DIR}"
+        icons_dir="${ROOT_ICONS_DIR}"
+        desktop_dir="${ROOT_DESKTOP_DIR}"
+    else
+        apps_dir="${USER_APPS_DIR}"
+        icons_dir="${USER_ICONS_DIR}"
+        desktop_dir="${USER_DESKTOP_DIR}"
+    fi
+
+    mkdir -p "${apps_dir}"
+    mkdir -p "${icons_dir}/scalable/apps"
+    mkdir -p "${icons_dir}/128x128/apps"
+    mkdir -p "${desktop_dir}"
+}
+
+# Function to get icon size and format
+get_icon_info() {
+    local icon_path=$1
+    local mime_type
+    mime_type=$(file --mime-type -b "$icon_path")
+    
+    case "$mime_type" in
+        "image/svg"*) echo "scalable" ;;
+        "image/png"|"image/jpeg") 
+            # For now, we'll put all bitmap images in 128x128
+            echo "128x128" ;;
+        *)
+            log "error" "Unsupported icon format: $mime_type"
+            exit 1 ;;
+    esac
+}
+
+# Function to install the AppImage
+install_appimage() {
+    local appimage_path=$1
+    local is_root=$2
+    local app_name apps_dir target_path
+    
+    app_name=$(basename "$appimage_path" .AppImage)
+    apps_dir=$(if [[ "$is_root" == "true" ]]; then echo "${ROOT_APPS_DIR}"; else echo "${USER_APPS_DIR}"; fi)
+    target_path="${apps_dir}/${app_name}"
+    
+    cp "$appimage_path" "$target_path"
+    chmod +x "$target_path"
+    echo "$target_path"
+}
+
+# Function to install the icon
+install_icon() {
+    local icon_path=$1
+    local app_name=$2
+    local is_root=$3
+    local icon_size icons_dir
+    
+    icon_size=$(get_icon_info "$icon_path")
+    icons_dir=$(if [[ "$is_root" == "true" ]]; then echo "${ROOT_ICONS_DIR}"; else echo "${USER_ICONS_DIR}"; fi)
+    
+    local icon_ext="${icon_path##*.}"
+    local target_path="${icons_dir}/${icon_size}/apps/${app_name}.${icon_ext}"
+    
+    cp "$icon_path" "$target_path"
+    echo "$app_name.${icon_ext}"
+}
+
+# Function to create desktop entry
+create_desktop_entry() {
+    local app_path=$1
+    local icon_name=$2
+    local is_root=$3
+    local app_name desktop_dir desktop_file
+    
+    app_name=$(basename "$app_path" .AppImage)
+    desktop_dir=$(if [[ "$is_root" == "true" ]]; then echo "${ROOT_DESKTOP_DIR}"; else echo "${USER_DESKTOP_DIR}"; fi)
+    desktop_file="${desktop_dir}/${app_name}.desktop"
+    
+    cat > "$desktop_file" << EOF
+[Desktop Entry]
+Name=${app_name}
+Exec=${app_path}
+Icon=${icon_name}
+Type=Application
+Categories=Application;
+Terminal=false
+EOF
+
+    # Update desktop database
+    if [[ "$is_root" == "true" ]]; then
+        update-desktop-database "${ROOT_DESKTOP_DIR}" &>/dev/null || true
+        gtk-update-icon-cache -f -t "${ROOT_ICONS_DIR}" &>/dev/null || true
+    else
+        update-desktop-database "${USER_DESKTOP_DIR}" &>/dev/null || true
+        gtk-update-icon-cache -f -t "${USER_ICONS_DIR}" &>/dev/null || true
+    fi
+}
+
+# Main script logic
+main() {
+    local is_root=false
+    
+    # Parse command line arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            -v|--version)
+                show_version
+                exit 0
+                ;;
+            --root)
+                is_root=true
+                check_root
+                shift
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
+    # Check if correct number of arguments provided
+    if [[ $# -ne 2 ]]; then
+        log "error" "Incorrect number of arguments."
+        show_help
+        exit 1
+    fi
+
+    local appimage_path=$1
+    local icon_path=$2
+
+    # Validate input files
+    validate_file "$appimage_path" "AppImage"
+    validate_file "$icon_path" "icon"
+
+    # Create necessary directories
+    log "info" "Creating required directories..."
+    create_directories "$is_root"
+
+    # Install AppImage
+    log "info" "Installing AppImage..."
+    local installed_app_path
+    installed_app_path=$(install_appimage "$appimage_path" "$is_root")
+
+    # Install icon
+    log "info" "Installing icon..."
+    local installed_icon_name
+    installed_icon_name=$(install_icon "$icon_path" "$(basename "$appimage_path" .AppImage)" "$is_root")
+
+    # Create desktop entry
+    log "info" "Creating desktop entry..."
+    create_desktop_entry "$installed_app_path" "$installed_icon_name" "$is_root"
+
+    log "info" "Installation completed successfully!"
+    log "info" "The application has been installed and should appear in your applications menu."
+    log "warning" "If you don't see the application immediately, try one of these steps:"
+    log "info" "1. Wait a few seconds for the desktop environment to refresh"
+    log "info" "2. Log out and log back in"
+    log "info" "3. Run: killall plasmashell && plasmashell & (for KDE)"
+    log "info" "4. Run: killall gnome-shell (for GNOME, press ALT+F2, type 'r' and press Enter)"
+}
+
+# Execute main function
+main "$@" 
