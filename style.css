@@ -1,0 +1,144 @@
+/* Custom styles */
+.section-spacing {
+    padding-top: 6rem;
+    padding-bottom: 6rem;
+}
+
+@media (min-width: 640px) {
+    .section-spacing {
+        padding-top: 8rem;
+        padding-bottom: 8rem;
+    }
+}
+
+/* Navigation */
+header {
+    background-color: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(4px);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+    transition: box-shadow 0.3s ease, backdrop-filter 0.3s ease, background-color 0.3s ease;
+}
+
+header nav {
+    padding-bottom: 1.25rem;
+}
+
+/* Installation Commands */
+.mt-12.space-y-6 > div {
+    box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.2);
+    transition: all 0.3s cubic-bezier(.25,.8,.25,1);
+}
+
+.mt-12.space-y-6 > div:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 20px 40px -5px rgba(0, 0, 0, 0.3);
+}
+
+/* Network Animation */
+#home {
+    position: relative;
+    min-height: 100vh;
+    background: linear-gradient(to bottom, #f9fafb, #ffffff);
+    overflow: hidden;
+}
+
+/* Canvas styles */
+#heroCanvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    opacity: 1;
+    pointer-events: none;
+}
+
+/* Ensure content is above canvas */
+#home > .mx-auto {
+    position: relative;
+    z-index: 1;
+}
+
+/* Material Design Elevation Classes */
+.elevation-1 {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+    transition: all 0.3s cubic-bezier(.25,.8,.25,1);
+}
+
+.elevation-1:hover {
+    box-shadow: 0 14px 28px rgba(0,0,0,0.25), 0 10px 10px rgba(0,0,0,0.22);
+}
+
+.feature-card, .tutorial-card, .command-card {
+    transition: all 0.3s cubic-bezier(.25,.8,.25,1);
+    position: relative;
+}
+
+.feature-card:hover, .tutorial-card:hover, .command-card:hover {
+    transform: translateY(-5px);
+}
+
+/* Tutorial Step Numbers */
+.tutorial-card {
+    position: relative;
+}
+
+.step-number {
+    position: absolute;
+    top: -1rem;
+    left: -1rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    background-color: #111827;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    z-index: 1;
+}
+
+/* Command Card Styles */
+.command-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1.5rem;
+}
+
+.command-content {
+    flex: 1;
+}
+
+/* Copy Button Animation */
+.copy-button {
+    transition: all 0.2s ease-in-out;
+}
+
+.copy-button:hover {
+    transform: scale(1.05);
+}
+
+.copy-button:active {
+    transform: scale(0.95);
+}
+
+/* Mobile Menu Animation */
+[data-mobile-menu] {
+    transition: transform 0.3s ease-in-out;
+}
+
+[data-mobile-menu].hidden {
+    transform: translateX(100%);
+}
+
+[data-backdrop] {
+    transition: opacity 0.3s ease-in-out;
+}
+
+[data-backdrop].hidden {
+    opacity: 0;
+    pointer-events: none;
+} 
